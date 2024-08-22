@@ -3,16 +3,28 @@ import pandas as pd
 import numpy as np
 
 # URLs to the raw data files on GitHub
-lmi_url = 'https://raw.githubusercontent.com/marky00100/suppdmndprgmtool/main/lmi_oews.csv'
-graduates_url = 'https://raw.githubusercontent.com/marky00100/suppdmndprgmtool/main/state_region_graduates.csv'
-cip_soc_url = 'https://raw.githubusercontent.com/marky00100/suppdmndprgmtool/main/cip_soc.csv'
-soc_cip_url = 'https://raw.githubusercontent.com/marky00100/suppdmndprgmtool/main/soc_cip.csv'
+lmi_url = 'https://raw.githubusercontent.com/Marky00100/streamlit-gap-analysis/main/lmi_oews.csv'
+graduates_url = 'https://raw.githubusercontent.com/Marky00100/streamlit-gap-analysis/main/state_region_graduates.csv'
+cip_soc_url = 'https://raw.githubusercontent.com/Marky00100/streamlit-gap-analysis/main/cip_soc.csv'
+soc_cip_url = 'https://raw.githubusercontent.com/Marky00100/streamlit-gap-analysis/main/soc_cip.csv'
+
+@st.cache_data
+def load_data():
+    try:
+        lmi_df = pd.read_csv(lmi_url)
+        graduates_df = pd.read_csv(graduates_url)
+        cip_soc_df = pd.read_csv(cip_soc_url)
+        soc_cip_df = pd.read_csv(soc_cip_url)
+        return lmi_df, graduates_df, cip_soc_df, soc_cip_df
+    except Exception as e:
+        st.error(f"Error loading data: {str(e)}")
+        return None, None, None, None
 
 # Load the data
-lmi_df = pd.read_csv(lmi_url)
-graduates_df = pd.read_csv(graduates_url)
-cip_soc_df = pd.read_csv(cip_soc_url)
-soc_cip_df = pd.read_csv(soc_cip_url)
+lmi_df, graduates_df, cip_soc_df, soc_cip_df = load_data()
+
+if lmi_df is None or graduates_df is None or cip_soc_df is None or soc_cip_df is None:
+    st.stop()
 
 # Filter graduates data for the latest year
 graduates_2022_df = graduates_df[graduates_df['academic_year'] == 2022]
@@ -36,19 +48,22 @@ graduates_2022_df['degree_category'] = graduates_2022_df['degree_group_logord'].
 def get_matching_socs(cip_code):
     return cip_soc_df[cip_soc_df['CIP2020Code'] == cip_code]['SOC2018Code'].unique()
 
-# Function to calculate gap ratio based on selected CIP and degree type
+# Function to calculate gap ratio based on selected CIP, degree type, and region
 def calculate_gap_ratio(cip_code, degree_type, region):
     # Filter graduates by CIP, degree type, and region
     total_graduates = graduates_2022_df[
         (graduates_2022_df['cip_code'] == cip_code) &
         (graduates_2022_df['degree_category'] == degree_type) &
-        (graduates_2022_df['jobsohioregion'] == region)
+        ((graduates_2022_df['jobsohioregion'] == region) | (region == 'Statewide'))
     ]['graduates'].sum()
     
     matching_socs = get_matching_socs(cip_code)
     
     # Filter LMI data for these SOCs and region
-    lmi_filtered_df = lmi_df[(lmi_df['soc_code'].isin(matching_socs)) & (lmi_df['jobsohioregion'] == region)]
+    lmi_filtered_df = lmi_df[
+        (lmi_df['soc_code'].isin(matching_socs)) & 
+        ((lmi_df['jobsohioregion'] == region) | (region == 'Statewide'))
+    ]
     
     # Adjust demand based on degree type and matching SOCs
     if degree_type == 'Doctoral':
@@ -73,7 +88,7 @@ st.title('Program Supply-Demand Gap Analysis Tool')
 st.sidebar.header('Select CIP and Parameters')
 selected_cip = st.sidebar.selectbox('Select a CIP:', graduates_2022_df['cip_code'].unique())
 selected_degree_type = st.sidebar.selectbox('Select Degree Type:', ['Doctoral', 'Master', 'Bachelor'])
-selected_region = st.sidebar.selectbox('Select Region:', lmi_df['jobsohioregion'].unique())
+selected_region = st.sidebar.selectbox('Select Region:', ['Statewide'] + list(lmi_df['jobsohioregion'].unique()))
 
 # Calculate Gap Ratio
 gap_ratio, total_graduates, adjusted_demand = calculate_gap_ratio(selected_cip, selected_degree_type, selected_region)
